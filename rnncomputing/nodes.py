@@ -279,6 +279,10 @@ class InputNode(Node):
         self.__input_matrix = input_matrix
         super(InputNode, self).__init__(name=name)
 
+    def update_input(self, input_matrix: np.ndarray):
+        self.__input_matrix = input_matrix
+        self._output = None
+
     @property
     def output(self) -> np.matrix:
         if self._output is not None:
@@ -366,8 +370,6 @@ class MutableInputMixin(MutableSequence):
 
         if self in input_node.parent_nodes:
             raise NotImplementedError("Node is already a parent of this input node. Currently not supported")
-
-        self.input_nodes.append(input_node)
         input_node.parent_nodes.append(self)
 
         if input_node.do_backprop:
@@ -383,6 +385,9 @@ class MutableInputMixin(MutableSequence):
         self._remove_input(self[index])
         self._add_input(value)
         self.input_nodes[index] = value
+
+    def __len__(self):
+        return len(self.input_nodes)
 
     def insert(self, index, value):
         self._add_input(value)
@@ -405,7 +410,7 @@ class MutableInputMixin(MutableSequence):
             self.append(node)
 
     def __iadd__(self, other):
-        if not isinstance(other, Sequence):
+        if isinstance(other, Node):
             other = [other]
         self.extend(other)
         return self

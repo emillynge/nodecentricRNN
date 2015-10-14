@@ -26,6 +26,7 @@ class SRNN(object):
         self.n_in = inputs.shape[1]
         self.theta = self.theta_generator(self.n_in, self.n_out, *hidden_layer_sizes)
         self.cost_node = None
+        self.ground_truth_node = nodes.GroundTruthNode(np.matrix(self.outputs.T), name=NodeName('Y'))
         self.input_nodes = list()
         self.output_nodes = list()
         self.h = defaultdict(dict)  # Container for hidden vectors h_[t, l]
@@ -47,27 +48,23 @@ class SRNN(object):
             context = theta('context', l) @ self.h[t - 1][l]
             self.h[t][l] = nodes.LogisticTransformNode(nodes.AdditionNode(bias, direct, context),
                                                               name=name('h'))
-            if add_to_output:
-                output_linear_sum += theta('output', l) @ self.h[t][l]
+            output_linear_sum += theta('output', l) @ self.h[t][l]
 
-
-            if self.output_link_class is None:
-                y_hat = output_linear_sum
-            else:
-                y_hat = self.output_link_class(output_linear_sum, name=NodeName('ŷ', t=t))
-            self.output_nodes.append(y_hat)
-            if add_to_output:
-                self.concat_output_node += y_hat
+        if self.output_link_class is None:
+            y_hat = output_linear_sum
+        else:
+            y_hat = self.output_link_class(output_linear_sum, name=NodeName('ŷ', t=t))
+        self.output_nodes.append(y_hat)
+        if add_to_output:
+            self.concat_output_node += y_hat
 
     def init_net(self):
         for l, shape in enumerate(self.theta.weights.context_conn_shapes):
             self.h[-1][l] = nodes.InputNode(np.zeros((shape[0], 1)), name=NodeName('zero', t=-1, l=l))
 
-
     def make_train_net(self):
         self.init_net()
-        ground_truth = nodes.GroundTruthNode(np.matrix(self.outputs.T), name=NodeName('Y'))
-        self.cost_node = self.cost_node_class(ground_truth, self.concat_output_node, name=NodeName('C'))
+        self.cost_node = self.cost_node_class(self.ground_truth_node, self.concat_output_node, name=NodeName('C'))
         for t, input_vec in enumerate(self.inputs):
             self.add_t_step(t, input_vec, add_to_output=(t >= self.t_skips))
 
@@ -85,7 +82,6 @@ class SRNN(object):
         return J, gradient_vector
 
     def train(self):
-        self.make_train_net()
         opt = self.minimizer(self.opt_func, self.theta.weights.vector)
         self.theta.weights.update_vector(opt[0])
         self.cost_node.forward_prop()
@@ -97,8 +93,24 @@ class SRNN(object):
         self.cost_node.check_grad()
 
     def predict(self, X):
-        for t, (input_node, output_node, input_vec) in enumerate(zip_longest(self.input_nodes, self.output_nodes, X)):
+        self.reload_input(X)
+        self.concat_output_node.recur_reset()
+        self.concat_output_node.forward_prop()
+        return self.concat_output_node.output.T
+
+    def reload_output(self, Y: np.matrix):
+        if Y.shape != self.outputs.shape:
+            raise ValueError('reload is not supposed to work with  output of different size than the original')
+        self.outputs[:, :] = Y
+
+    def reload_input(self, X, truncate=False):
+        t=0
+        for t, (input_node, output_node, input_vec) in enumerate(zip_longest(self.input_nodes,
+                                                                              self.output_nodes,
+                                                                             X)):
             if input_vec is None:
+                if truncate:
+                    break
                 try:
                     self.concat_output_node.remove(output_node)
                 except LookupError:
@@ -109,4 +121,12 @@ class SRNN(object):
                 self.add_t_step(t, input_vec)
                 continue
 
-            if output_node not in self.concat_output_node:
+            if output_node not in self.concat_output_node and t >= self.t_skips:
+                self.concat_output_node += output_node
+
+            assert isinstance(input_node, nodes.InputNode)
+            input_node.update_input(input_vec.reshape((self.n_in, 1)))
+        else:
+            return
+        del(self.input_nodes[t:])
+        del(self.output_nodes[t-self.t_skips:])
