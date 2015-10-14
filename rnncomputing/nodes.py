@@ -337,11 +337,23 @@ class ParentNode(Node):
             input_node.parent_nodes.append(self)
 
 
+# noinspection PyMethodFirstArgAssignment,PyUnresolvedReferences
 class MutableInputMixin(MutableSequence):
     """
     Mixin class that can be applied to Nodes that can handle arbitrary number of input nodes
         Implementation assumes that Concrete implementation of Node is subclass of ParentNode!
     """
+    def check_for_class_conformity(self, input_node):
+        """
+        Checks the basic class assumptions required by a mixin
+            self must be an implementation of Parentnode
+            input_node must be an implementation of Node
+        This is mostly practical for coding in an IDE that uses isinstance asserts to do autocompletion
+        """
+        assert isinstance(self, ParentNode)     # self must be a parent node
+        assert isinstance(input_node, Node)     # input_node must be a concrete Node
+        return self, input_node
+
     def _remove_input(self, input_node):
         self, input_node = self.check_for_class_conformity(input_node)
         input_node.parent_nodes.remove(self)
@@ -370,21 +382,11 @@ class MutableInputMixin(MutableSequence):
     def __setitem__(self, index, value):
         self._remove_input(self[index])
         self._add_input(value)
-        self.input_nodes[value]
+        self.input_nodes[index] = value
 
     def insert(self, index, value):
-        pass
-
-    def check_for_class_conformity(self, input_node):
-        """
-        Checks the basic class assumptions required by a mixin
-            self must be an implementation of Parentnode
-            input_node must be an implementation of Node
-        This is mostly practical for coding in an IDE that uses isinstance asserts to do autocompletion
-        """
-        assert isinstance(self, ParentNode)     # self must be a parent node
-        assert isinstance(input_node, Node)     # input_node must be a concrete Node
-        return self, input_node
+        self._add_input(value)
+        self.input_nodes.insert(index, value)
 
     def append(self: ParentNode, input_node: Node):
         """
@@ -416,6 +418,9 @@ class MutableInputMixin(MutableSequence):
         new_node = self.__class__(*self.input_nodes)
         new_node += other
         return new_node
+
+    def __contains__(self, item):
+        return item in self.input_nodes
 
 
 class AdditionNode(ParentNode, MutableInputMixin):

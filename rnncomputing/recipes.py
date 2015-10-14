@@ -4,7 +4,7 @@ from .utils import Theta, ThetaNodeGenerator, NodeName
 import numpy as np
 from collections import Sequence, defaultdict
 from scipy import optimize
-
+from itertools import zip_longest
 class SRNN(object):
     theta_generator = ThetaNodeGenerator
 
@@ -27,8 +27,9 @@ class SRNN(object):
         self.theta = self.theta_generator(self.n_in, self.n_out, *hidden_layer_sizes)
         self.cost_node = None
         self.input_nodes = list()
+        self.output_nodes = list()
         self.h = defaultdict(dict)  # Container for hidden vectors h_[t, l]
-        self.est_output_node = None
+        self.concat_output_node = nodes.ConcatenateNode(name=('Ŷ',), axis=1)
 
     def add_t_step(self, t, input_vec, add_to_output=True):
         theta = self.theta
@@ -49,22 +50,24 @@ class SRNN(object):
             if add_to_output:
                 output_linear_sum += theta('output', l) @ self.h[t][l]
 
-        if add_to_output:
+
             if self.output_link_class is None:
                 y_hat = output_linear_sum
             else:
                 y_hat = self.output_link_class(output_linear_sum, name=NodeName('ŷ', t=t))
-            self.est_output_node += y_hat
+            self.output_nodes.append(y_hat)
+            if add_to_output:
+                self.concat_output_node += y_hat
 
     def init_net(self):
         for l, shape in enumerate(self.theta.weights.context_conn_shapes):
             self.h[-1][l] = nodes.InputNode(np.zeros((shape[0], 1)), name=NodeName('zero', t=-1, l=l))
-        self.est_output_node = nodes.ConcatenateNode(name=('Ŷ',), axis=1)
+
 
     def make_train_net(self):
         self.init_net()
         ground_truth = nodes.GroundTruthNode(np.matrix(self.outputs.T), name=NodeName('Y'))
-        self.cost_node = self.cost_node_class(ground_truth, self.est_output_node, name=NodeName('C'))
+        self.cost_node = self.cost_node_class(ground_truth, self.concat_output_node, name=NodeName('C'))
         for t, input_vec in enumerate(self.inputs):
             self.add_t_step(t, input_vec, add_to_output=(t >= self.t_skips))
 
@@ -86,9 +89,24 @@ class SRNN(object):
         opt = self.minimizer(self.opt_func, self.theta.weights.vector)
         self.theta.weights.update_vector(opt[0])
         self.cost_node.forward_prop()
-        print(self.outputs, '\n', self.est_output_node.output.T)
+        print(self.outputs, '\n', self.concat_output_node.output.T)
         self.cost_node.start_backprop()
         print(np.matrix(self.opt_func(opt[0])[0]))
 
     def check_grad(self):
         self.cost_node.check_grad()
+
+    def predict(self, X):
+        for t, (input_node, output_node, input_vec) in enumerate(zip_longest(self.input_nodes, self.output_nodes, X)):
+            if input_vec is None:
+                try:
+                    self.concat_output_node.remove(output_node)
+                except LookupError:
+                    pass
+                continue
+
+            if input_node is None:
+                self.add_t_step(t, input_vec)
+                continue
+
+            if output_node not in self.concat_output_node:
