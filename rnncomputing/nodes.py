@@ -6,6 +6,7 @@ from collections import defaultdict, Sequence
 import numpy as np
 from .utils import (sigmoid_derivative, debug)
 import inspect
+from collections import MutableSequence
 from functools import partial
 import logging
 import warnings
@@ -336,11 +337,44 @@ class ParentNode(Node):
             input_node.parent_nodes.append(self)
 
 
-class MutableInputMixin(object):
+class MutableInputMixin(MutableSequence):
     """
     Mixin class that can be applied to Nodes that can handle arbitrary number of input nodes
         Implementation assumes that Concrete implementation of Node is subclass of ParentNode!
     """
+    def _remove_input(self, input_node):
+        self, input_node = self.check_for_class_conformity(input_node)
+        input_node.parent_nodes.remove(self)
+        if input_node.do_backprop and self.do_backprop:
+            # if removed child needed backprop we might not need it any longer for this node
+            self.do_back_backprop_if_children_does()
+
+    def _add_input(self, input_node):
+        self, input_node = self.check_for_class_conformity(input_node)
+
+        if self in input_node.parent_nodes:
+            raise NotImplementedError("Node is already a parent of this input node. Currently not supported")
+
+        self.input_nodes.append(input_node)
+        input_node.parent_nodes.append(self)
+
+        if input_node.do_backprop:
+            self.do_backprop = True     # if child needs backprop, so does this node
+
+    def __getitem__(self, item):
+        return self.input_nodes[item]
+
+    def __delitem__(self, index):
+        self.remove(self[index])
+
+    def __setitem__(self, index, value):
+        self._remove_input(self[index])
+        self._add_input(value)
+        self.input_nodes[value]
+
+    def insert(self, index, value):
+        pass
+
     def check_for_class_conformity(self, input_node):
         """
         Checks the basic class assumptions required by a mixin
@@ -357,26 +391,12 @@ class MutableInputMixin(object):
         Add new node to inputs
         :return:
         """
-        self, input_node = self.check_for_class_conformity(input_node)
-
-        if self in input_node.parent_nodes:
-            raise NotImplementedError("Node is already a parent of this input node. Currently not supported")
-        "@self: ParentNode"
+        self._add_input(input_node)
         self.input_nodes.append(input_node)
-        input_node.parent_nodes.append(self)
-
-        if input_node.do_backprop:
-            self.do_backprop = True     # if child needs backprop, so does this node
 
     def remove(self: ParentNode, input_node: Node):
-        self, input_node = self.check_for_class_conformity(input_node)
-
+        self._remove_input(input_node)
         self.input_nodes.remove(input_node)
-        input_node.parent_nodes.remove(self)
-
-        if input_node.do_backprop and self.do_backprop:
-            # if removed child needed backprop we might not need it any longer for this node
-            self.do_back_backprop_if_children_does()
 
     def extend(self, input_nodes: Sequence):
         for node in input_nodes:
