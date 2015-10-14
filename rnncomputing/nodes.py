@@ -49,6 +49,7 @@ class Node(ABC):
         self.input_nodes = list(input_nodes)
         self.parent_nodes = list()
         self.parent_gradients = dict()
+        self.touched_parents = None
         self._total_cost_gradient = None
         self._output = None
         self._name = name
@@ -108,7 +109,8 @@ class Node(ABC):
     def total_cost_gradient(self) -> np.matrix:
         if self._total_cost_gradient is None:
             try:
-                self._total_cost_gradient = sum(self.parent_gradients[parent_node] for parent_node in self.parent_nodes)
+                self._total_cost_gradient = sum(self.parent_gradients[parent_node] for parent_node in self.parent_nodes
+                                                if parent_node in self.touched_parents)
             except LookupError:
                 raise BackPropNotReady('Some parents have not reported their gradient contribution')
         return self._total_cost_gradient
@@ -132,6 +134,7 @@ class Node(ABC):
         """
         self._total_cost_gradient = None
         self.parent_gradients.clear()
+        self.touched_parents = None
 
     def post_backprop(self):
         """
@@ -160,6 +163,9 @@ class Node(ABC):
         :param parent_node: Node for which self provides input that influences cost function
         :return: None
         """
+        if not self.touched_parents:
+            self.touched_parents = set(parent for parent in self.parent_nodes if parent.touched)
+
         debug(self, 'Backpropagating')
         self.parent_gradients[parent_node] = cost_gradient_contribution
         try:
