@@ -27,45 +27,46 @@ class SRNN(object):
         self.theta = self.theta_generator(self.n_in, self.n_out, *hidden_layer_sizes)
         self.cost_node = None
         self.input_nodes = list()
+        self.h = defaultdict(dict)  # Container for hidden vectors h_[t, l]
         self.est_output_node = None
 
-    def make_net(self):
+    def add_t_step(self, t, input_vec, add_to_output=True):
         theta = self.theta
-        hidden_vector = defaultdict(dict)               # Container for hidden vectors h_[t, l]
-        est_outputs = nodes.ConcatenateNode(name=('Ŷ',), axis=1)
-        self.est_output_node = est_outputs
-        ground_truth = nodes.GroundTruthNode(np.matrix(self.outputs.T), name=NodeName('Y'))
-        cost_node = self.cost_node_class(ground_truth, est_outputs, name=NodeName('C'))
+        x = nodes.InputNode(np.matrix(input_vec.reshape((self.n_in, 1))), name=NodeName('x', t=t))
+        self.input_nodes.append(x)
+        self.h[t][-1] = x
 
+        output_linear_sum = nodes.AdditionNode(name=NodeName('outsum', t=t))
+        for l in range(theta.weights.n_hidden):
+            def name(var_name):
+                return NodeName(var_name, t=t, l=l)
+
+            bias = theta('bias', l)
+            direct = theta('direct', l) @ self.h[t][l - 1]
+            context = theta('context', l) @ self.h[t - 1][l]
+            self.h[t][l] = nodes.LogisticTransformNode(nodes.AdditionNode(bias, direct, context),
+                                                              name=name('h'))
+            if add_to_output:
+                output_linear_sum += theta('output', l) @ self.h[t][l]
+
+        if add_to_output:
+            if self.output_link_class is None:
+                y_hat = output_linear_sum
+            else:
+                y_hat = self.output_link_class(output_linear_sum, name=NodeName('ŷ', t=t))
+            self.est_output_node += y_hat
+
+    def init_net(self):
         for l, shape in enumerate(self.theta.weights.context_conn_shapes):
-            hidden_vector[-1][l] = nodes.InputNode(np.zeros((shape[0], 1)), name=NodeName('zero', t=-1, l=l))
+            self.h[-1][l] = nodes.InputNode(np.zeros((shape[0], 1)), name=NodeName('zero', t=-1, l=l))
+        self.est_output_node = nodes.ConcatenateNode(name=('Ŷ',), axis=1)
 
+    def make_train_net(self):
+        self.init_net()
+        ground_truth = nodes.GroundTruthNode(np.matrix(self.outputs.T), name=NodeName('Y'))
+        self.cost_node = self.cost_node_class(ground_truth, self.est_output_node, name=NodeName('C'))
         for t, input_vec in enumerate(self.inputs):
-            x = nodes.InputNode(np.matrix(input_vec.reshape((self.n_in, 1))), name=NodeName('x', t=t))
-            self.input_nodes.append(x)
-            hidden_vector[t][-1] = x
-
-            output_linear_sum = nodes.AdditionNode(name=NodeName('outsum', t=t))
-            for l in range(theta.weights.n_hidden):
-                def name(var_name):
-                    return NodeName(var_name, t=t, l=l)
-
-                bias = theta('bias', l)
-                direct = theta('direct', l) @ hidden_vector[t][l - 1]
-                context = theta('context', l) @ hidden_vector[t - 1][l]
-                hidden_vector[t][l] = nodes.LogisticTransformNode(nodes.AdditionNode(bias, direct, context),
-                                                                  name=name('h'))
-                if t >= self.t_skips:
-                    output_linear_sum += theta('output', l) @ hidden_vector[t][l]
-
-            if t >= self.t_skips:
-                if self.output_link_class is None:
-                    y_hat = output_linear_sum
-                else:
-                    y_hat = self.output_link_class(output_linear_sum, name=NodeName('ŷ', t=t))
-                est_outputs += y_hat
-
-        self.cost_node = cost_node
+            self.add_t_step(t, input_vec, add_to_output=(t >= self.t_skips))
 
     def opt_func(self, theta_vec):
         theta = self.theta
@@ -81,17 +82,13 @@ class SRNN(object):
         return J, gradient_vector
 
     def train(self):
+        self.make_train_net()
         opt = self.minimizer(self.opt_func, self.theta.weights.vector)
         self.theta.weights.update_vector(opt[0])
         self.cost_node.forward_prop()
         print(self.outputs, '\n', self.est_output_node.output.T)
         self.cost_node.start_backprop()
         print(np.matrix(self.opt_func(opt[0])[0]))
-
-    def test(self, X, Y):
-
-
-
 
     def check_grad(self):
         self.cost_node.check_grad()
