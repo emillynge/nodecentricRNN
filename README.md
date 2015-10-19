@@ -15,7 +15,7 @@ The backbone is the nodes module. Here you will find the most used node types de
 * ConcatenateNode -> outputs all input nodes concatednated along a specified axis
 
 ## A simple network:
-*pseudocode*
+*all input matrices are assumed to be numpy matrices. This is necessary for some functionality to work properly*
 ```
 x1 = someinputmatrixattime1
 x2 = someinputmatrixattime2
