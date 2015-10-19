@@ -44,10 +44,11 @@ class Theta(object):
         self.direct_conn_shapes = [(n, p) for p, n in zip(self.layer_sizes[:-2], self.layer_sizes[1:-1])]
         self.context_conn_shapes = [(hidden_size, hidden_size) for hidden_size in self.layer_sizes[1:-1]]
         self.output_conn_shapes = [(num_out, hidden_size) for hidden_size in self.layer_sizes[1:-1]]
+        self.in2out_conn_shapes = [(num_out, num_in)]
         self.bias_conn_shapes = [(hidden_size, 1) for hidden_size in self.layer_sizes[1:]]
 
         self.n_weights = sum(np.prod(shape) for shape in self.direct_conn_shapes + self.context_conn_shapes
-                             + self.output_conn_shapes + self.bias_conn_shapes)
+                             + self.output_conn_shapes + self.bias_conn_shapes + self.in2out_conn_shapes)
         self.n_hidden = len(hidden_layer_sizes)
 
 
@@ -72,6 +73,7 @@ class Theta(object):
         self.context_weights, i = self.construct_weight_views(self.context_conn_shapes, i)
         self.output_weights, i = self.construct_weight_views(self.output_conn_shapes, i)
         self.bias_weights, i = self.construct_weight_views(self.bias_conn_shapes, i)
+        self.in2out_weights, i = self.construct_weight_views(self.in2out_conn_shapes, i)
 
     def update_vector(self, new_vector):
         if len(new_vector) != len(self.vector):

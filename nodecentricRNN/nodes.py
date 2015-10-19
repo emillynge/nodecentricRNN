@@ -7,7 +7,7 @@ import numpy as np
 from .utils import (sigmoid_derivative, debug)
 import inspect
 from collections import MutableSequence
-from functools import partial
+from functools import partial, wraps
 import logging
 import warnings
 eps = np.finfo(float).eps * 10
@@ -71,7 +71,7 @@ class Node(ABC):
             subscripts = [str(subscr) for subscr in self._name[1:] if subscr is not None]
             subscript = '[' + ','.join(subscripts) + ']' if subscripts else ''
             return self._name[0] + subscript
-        return ', '.join(inp.name for inp in self.input_nodes)
+        return ', '.join(repr(inp) if inp._name is None else inp.name for inp in self.input_nodes)
 
     def post_init(self) -> None:
         """
@@ -148,12 +148,19 @@ class Node(ABC):
         self._output = None
         self.touched = False
 
-    def recur_reset(self):
+    def backward_reset(self):
         self.post_backprop()
         self.post_forward_prop()
 
         for inp in self.input_nodes_iter:
-            inp.recur_reset()
+            inp.backward_reset()
+
+    def forward_reset(self):
+        self.post_backprop()
+        self.post_forward_prop()
+
+        for parent in self.parent_nodes:
+            parent.forward_reset()
 
     def backprop(self, cost_gradient_contribution: np.matrix, parent_node):
         """
@@ -204,11 +211,11 @@ class Node(ABC):
     def recur_check_grad(self, cost_node, check_set: set, h=0.001, tol=.001):
         if self.do_backprop and self not in check_set:
             check_set.add(self)
-            diff = self.central_approx_node(cost_node, h=h)
-            debug(self, 'diff = {:1.2e}'.format(diff), level='info')
-            if diff > tol:
+            diff, diff_vec, abs_diff = self.central_approx_node(cost_node, h=h)
+            debug(self, 'rel_diff = {0:1.2e}\tabs_diff = {1:1.2e}'.format(diff, np.max(abs_diff)), level='info')
+            if diff > tol and any(abs_diff > 10**-10):
                 self.central_approx_node(cost_node, h=h)
-                raise GradientCheckError('{0!r}: gradient difference of {1} above limit of {2}'.format(self, diff, tol))
+                raise GradientCheckError('{0!r}: gradient difference of {1} above limit of {2}:\n{3}'.format(self, diff, tol, diff_vec))
             for inp in self.input_nodes_iter:
                 inp.recur_check_grad(cost_node, check_set, h=h, tol=tol)
 
@@ -220,7 +227,7 @@ class Node(ABC):
         :return: infinity-norm of the difference between total_gradient and approximated gradient
         """
         # Initialize network
-        cost_node.recur_reset()
+        cost_node.backward_reset()
         cost_node.forward_prop()
 
         # collect original outputs and gradients
@@ -236,21 +243,63 @@ class Node(ABC):
             self._output = orig_output
             cost_node.forward_prop()
             J = cost_node.output[0, 0]
-            cost_node.recur_reset()
+
+            self.forward_reset()
+            #cost_node.backward_reset()
             return J
+
+        scale = 5/4
+        def central_approx(ele, _h, accept_zero, count=0, find_zero_boundary=None, prev_grad=None):
+            """
+            First find minimal h that will produce any gradient at all
+            Then get gradient using h_minimal*1000
+            """
+            J_f = cost(i,j, ele +_h)
+            J_b = cost(i,j, ele - _h)
+            app_grad = (J_f - J_b) / (2 * h)
+            count += 1
+            return app_grad
+
+            if find_zero_boundary is None:
+                if app_grad == 0:
+                    if accept_zero:
+                        return app_grad
+
+                    find_zero_boundary = 0  # from zero side
+                else:
+                    find_zero_boundary = 1  # from positive side
+                return central_approx(ele, _h, accept_zero, find_zero_boundary=find_zero_boundary)
+
+            elif count > 100:
+                return app_grad
+
+            elif find_zero_boundary is False:
+                if prev_grad is None or abs((app_grad - prev_grad)/app_grad) > .0000001:
+                    return central_approx(ele, _h*scale, accept_zero, count=count, find_zero_boundary=False, prev_grad=app_grad)
+                return app_grad
+
+            elif find_zero_boundary == 0:   # trying to find zero boundary from zero side: find non_zero number
+                if app_grad != 0:
+                    return central_approx(ele, _h*scale, accept_zero, count=count, find_zero_boundary=False, prev_grad=app_grad)
+                return central_approx(ele, _h*2, accept_zero, count=count, find_zero_boundary=find_zero_boundary)
+
+            elif find_zero_boundary == 1:   # trying to find zero boundary from non_zero side: find zero
+                if app_grad == 0:
+                    return central_approx(ele, _h*2, accept_zero, count=count, find_zero_boundary=False)
+                return central_approx(ele, _h/2, accept_zero, count=count, find_zero_boundary=find_zero_boundary)
 
         # Change elements of output matrix one at a time to get central difference wrt. that element
         for i, row in enumerate(orig_output.tolist()):
             for j, ele in enumerate(row):
-                J_f = cost(i,j, ele + h)
-                J_b = cost(i,j, ele - h)
-                approx_gradient[i,j] = (J_f - J_b) / (2 * h)
+                approx_gradient[i,j] = central_approx(ele, h, orig_gradient[i, j] == 0.0)
                 orig_output[i,j] = ele
 
         diff_mat = approx_gradient - orig_gradient
-        max_diff = np.max(np.min(np.array([np.divide(diff_mat, orig_gradient).flatten().tolist(),
-                                    np.divide(diff_mat, approx_gradient).flatten().tolist()]), axis=0))
-        return abs(max_diff)
+        diff_fracs = np.min(np.abs(np.array([np.divide(diff_mat, orig_gradient).flatten().tolist(),
+                                    np.divide(diff_mat, approx_gradient).flatten().tolist()])), axis=0)
+        diff_fracs[np.isnan(diff_fracs)] = 0
+        max_diff = np.max(diff_fracs)
+        return abs(max_diff), diff_fracs, diff_mat
 
 
 class InputNode(Node):
@@ -554,7 +603,7 @@ class TopNode(ParentNode):
         self.backprop(np.matrix([[1]]), 'root')     # TODO fix this hack.  This node really shouldn't have a parent
 
     def check_grad(self, h=0.001, tol=.1):
-        self.recur_reset()
+        self.backward_reset()
         self.forward_prop()
         self.start_backprop()
         self.forward_prop()
@@ -662,6 +711,26 @@ class ResidualSumOfSquaresNode(TopNode):
     def compute_cost_gradient_wrt_input_node(self, input_node_idx) -> np.matrix:
         y = self.input_nodes[0].output
         y_hat = self.input_nodes[1].output
-        return -2 * (y - y_hat)
+        return  -2 * (y - y_hat) if input_node_idx == 1 else 2 * (y - y_hat)
+
+
+class ExponentialDropoffRSSNode(ResidualSumOfSquaresNode):
+
+    def apply_dropoff(self, M: np.matrix):
+        return np.multiply(M, self.dropoff(M.shape))
+
+    @lru_cache()
+    def dropoff(self, shape: tuple):
+        dropoff = np.exp(np.mgrid[0:shape[0], -shape[1]+1:1][1] * .1)
+        dropoff[dropoff < 10**-2] = 10**-2
+        return dropoff
+
+    def compute_output(self, y: np.matrix, y_hat: np.matrix):
+        return super(ExponentialDropoffRSSNode, self).compute_output(self.apply_dropoff(y), self.apply_dropoff(y_hat))
+
+    def compute_cost_gradient_wrt_input_node(self, input_node_idx):
+        return self.apply_dropoff(self.apply_dropoff(super(ExponentialDropoffRSSNode,
+                                                           self).compute_cost_gradient_wrt_input_node(input_node_idx)))
+
 
 root_node = TopNode.root

@@ -13,7 +13,7 @@ class SRNN(object):
     cost_node_class = nodes.EntropyCostNode
     output_link_class = nodes.LogisticTransformNode
 
-    def __init__(self, inputs: np.matrix, outputs: np.matrix, *hidden_layer_sizes: Sequence):
+    def __init__(self, inputs: np.matrix, outputs: np.matrix, *hidden_layer_sizes: Sequence, **theta_kwargs):
         assert isinstance(inputs, np.matrix)
         assert isinstance(outputs, np.matrix)
 
@@ -24,7 +24,7 @@ class SRNN(object):
         self.outputs = outputs
         self.n_out = outputs.shape[1]
         self.n_in = inputs.shape[1]
-        self.theta = self.theta_generator(self.n_in, self.n_out, *hidden_layer_sizes)
+        self.theta = self.theta_generator(self.n_in, self.n_out, *hidden_layer_sizes, **theta_kwargs)
         self.cost_node = None
         self.ground_truth_node = nodes.GroundTruthNode(np.matrix(self.outputs.T), name=NodeName('Y'))
         self.input_nodes = list()
@@ -49,6 +49,7 @@ class SRNN(object):
             self.h[t][l] = nodes.LogisticTransformNode(nodes.AdditionNode(bias, direct, context),
                                                               name=name('h'))
             output_linear_sum += theta('output', l) @ self.h[t][l]
+        output_linear_sum += theta('in2out', 0) @ x
 
         if self.output_link_class is None:
             y_hat = output_linear_sum
@@ -94,9 +95,15 @@ class SRNN(object):
 
     def predict(self, X):
         self.reload_input(X)
-        self.concat_output_node.recur_reset()
+        self.concat_output_node.backward_reset()
         self.concat_output_node.forward_prop()
         return self.concat_output_node.output.T
+
+    def append_output(self, y):
+        Y = np.concatenate((self.outputs, y))
+        self.outputs = Y
+        self.ground_truth_node.update_input(Y.T)
+        self.cost_node.backward_reset()
 
     def reload_output(self, Y: np.matrix):
         if Y.shape != self.outputs.shape:
