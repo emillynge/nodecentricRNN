@@ -1,7 +1,8 @@
 # nodecentricRNN
 Recurrent Neural Network from a node perspective
 
-__Important: This project is written in python 3.5!   neither 2.7 or 3.4 will work__
+__Important: This project is written in python 3.5!   
+neither 2.7 nor 3.4 will work__
 
 The backbone is the nodes module. Here you will find the most used node types defined:
 * InputNode -> outputs the matrix that was passed at node creation
