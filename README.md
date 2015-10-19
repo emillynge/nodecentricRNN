@@ -60,7 +60,7 @@ new_estimate = y_hat_vector.output
 ## Infix Shorthand
 To make coding easier to understand some infix operators are baked in at object creation:
 * @: `node1 @ node2 -> DotNode(node1, node2)`
-* +: `node1 + node2 -> Addition(node1, node2)` __if node1 is a concatenation node ->__ `ConcatenateNode(node1.input_nodes, node2)`
+* +: `node1 + node2 -> Addition(node1, node2)` __if node1 is a concatenation node ->__ `ConcatenateNode(node2, *node1.input_nodes)`
 * +=: `node1 += node2 -> node1.append(node2)` __if node1 is a concatenation node the effect is the same__
 
 Using these we can refactor the simple network
@@ -80,7 +80,7 @@ theta_out = ParameterNode(weights_out, gradientmatrix_out)
 h1 = LogisticTranformNode((InputNode(x1) @ theta_input) + (h0 @ theta_prev))
 y_hat += LogisticTranformNode(h1 @ theta_out)
 
-h1 = LogisticTranformNode((InputNode(x2) @ theta_input) + (h1 @ theta_prev))
+h2 = LogisticTranformNode((InputNode(x2) @ theta_input) + (h1 @ theta_prev))
 y_hat += LogisticTranformNode(h2 @ theta_out)
 
 cost = EntropyCostNode(y, y_hat)
@@ -96,6 +96,11 @@ To make a new node you should inherit from one of the node ABC's
 
 Additionally there is a mutable input mixin that makes it possible to add or remove input nodes after object creation.
 This mixin is used for example in AdditionNode and ConcatenateNode
+
+Any node just has implement the abstract methods `compute_cost_gradient_wrt_input_node` and  `compute_output`
+These are essential to doing the forward and backward propagation.
+
+To check your implementation any topnode has the method `check_grad(self, h=0.001, tol=.1)` which will throw an error if any grandchild reports a gradient that differs too much from the central approximated gradient. *NB: This check will _only_ be done for ancestors to parameter nodes.*. 
 
 # Recipes
 
