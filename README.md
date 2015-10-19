@@ -13,7 +13,7 @@ The backbone is the nodes module. Here you will find the most used node types de
 
 # A simple network:
 *pseudocode*
-
+```
 x1 = someinputmatrixattime1
 x2 = someinputmatrixattime2
 
@@ -32,5 +32,23 @@ y_hat2 = LogisticTranformNode(DotNode(h2, theta_out))
 
 y_hat_vector = ConcatenateNode(y_hat1, y_hat2)
 cost = EntropyCostNode(y, y_hat_vector)
+```
+
+cost can be computed by forward propagating and fetching output of cost:
+`cost.forward_prop()`
+`C = cost.output`
+
+cost gradients can be obtained by backpropagating (requires forward propagation has been dones first). The resulting gradients will be stored in the gradient matrices supplied at declaration of parameter nodes
+`cost.start_backprop()`
+`dCost_dthetainput = gradientmatrix_input`
+
+Use these gradients to update the weights be directly changing the weight matrices passed at declaration of parameter nodes.
+`theta_input += gradient2updatestep(dCost_dthetainput)`
+
+recompute and get new y estimate by forward propagating from concatenation node
+`y_hat_vector.forward_prop`
+`new_estimate = y_hat_vector.output`
+
+
 
 
