@@ -14,7 +14,7 @@ The backbone is the nodes module. Here you will find the most used node types de
 * EntropyCostNode -> outputs the Entropy error of groundTruth Input and estimated input
 * ConcatenateNode -> outputs all input nodes concatednated along a specified axis
 
-# A simple network:
+## A simple network:
 *pseudocode*
 ```
 x1 = someinputmatrixattime1
@@ -60,7 +60,7 @@ y_hat_vector.forward_prop
 new_estimate = y_hat_vector.output
 ```
 
-## Infix Shorthand
+### Infix Shorthand
 To make coding easier to understand some infix operators are baked in at object creation:
 * @: `node1 @ node2 -> DotNode(node1, node2)`
 * +: `node1 + node2 -> Addition(node1, node2)` __if node1 is a concatenation node ->__ `ConcatenateNode(node2, *node1.input_nodes)`
@@ -88,7 +88,7 @@ y_hat += LogisticTranformNode(h2 @ theta_out)
 
 cost = EntropyCostNode(y, y_hat)
 ```
-## Node Naming
+### Node Naming
 To make debugging easier it is possible to provide at name key-word when creating a node. This name should be a tuple with (name, level, timestep). In utils you will find the class NodeName which is a namedtuple that makes naming a bit easier. Naming the node makes the __repr__ function use this name instead of the usual representation.
 ```
 print(LogisticTranformNode((InputNode(x1) @ theta_input) + (h0 @ theta_prev)).__repr__())
@@ -99,7 +99,7 @@ print(LogisticTranformNode((InputNode(x1) @ theta_input) + (h0 @ theta_prev), na
 >>> h[1,1]
 ```
 
-# Making your own nodes
+## Making your own nodes
 
 To make a new node you should inherit from one of the node ABC's
 * ParentNode: for nodes that has one or more inputnodes
@@ -114,7 +114,7 @@ These are essential to doing the forward and backward propagation.
 
 To check your implementation any topnode has the method `check_grad(self, h=0.001, tol=.1)` which will throw an error if any grandchild reports a gradient that differs too much from the central approximated gradient. *NB: This check will _only_ be done for ancestors to parameter nodes.*. 
 
-# Recipes
+## Recipes
 
 recipes are ways of putting together nodes to form fully fledged netowrks and can be found in the `recipe` module. At the time of writing only a very simple SRNN recipe is there and no ABC for creating new a new recipe has been made.
 
