@@ -35,19 +35,29 @@ cost = EntropyCostNode(y, y_hat_vector)
 ```
 
 cost can be computed by forward propagating and fetching output of cost:
-`cost.forward_prop()`
-`C = cost.output`
+```
+cost.forward_prop()
+C = cost.output
+```
 
 cost gradients can be obtained by backpropagating (requires forward propagation has been dones first). The resulting gradients will be stored in the gradient matrices supplied at declaration of parameter nodes
-`cost.start_backprop()`
-`dCost_dthetainput = gradientmatrix_input`
+```
+cost.start_backprop()
+dCost_dthetainput = gradientmatrix_input
+```
 
 Use these gradients to update the weights be directly changing the weight matrices passed at declaration of parameter nodes.
+
+
 `theta_input += gradient2updatestep(dCost_dthetainput)`
 
 recompute and get new y estimate by forward propagating from concatenation node
-`y_hat_vector.forward_prop`
-`new_estimate = y_hat_vector.output`
+```
+y_hat_vector.forward_prop
+new_estimate = y_hat_vector.output
+```
+
+
 
 
 
