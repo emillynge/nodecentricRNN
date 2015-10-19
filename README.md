@@ -72,7 +72,7 @@ x2 = someinputmatrixattime2
 y = GroundTruthNode(outputattime1and2)
 y_hat = ConcatenateNode()
 
-h0 = InputNodes(zeros)
+h0 = InputNode(zeros)
 theta_input = ParameterNode(weights_input, gradientmatrix_input)
 theta_prev = ParameterNode(weights_prev, gradientmatrix_prev)
 theta_out = ParameterNode(weights_out, gradientmatrix_out)
@@ -85,7 +85,16 @@ y_hat += LogisticTranformNode(h2 @ theta_out)
 
 cost = EntropyCostNode(y, y_hat)
 ```
-
+## Node Naming
+To make debugging easier it is possible to provide at name key-word when creating a node. This name should be a tuple with (name, level, timestep). In utils you will find the class NodeName which is a namedtuple that makes naming a bit easier. Naming the node makes the __repr__ function use this name instead of the usual representation.
+```
+print(LogisticTranformNode((InputNode(x1) @ theta_input) + (h0 @ theta_prev)).__repr__())
+>>>  LogisticTranformNode(AdditionNode(DotNode(InputNode(), ParameterNode()), DotNode(InputNode(), ParameterNode())))
+print(LogisticTranformNode((InputNode(x1, name=('x', 1)) @ theta_input) + (h0 @ theta_prev)).__repr__())
+>>>  LogisticTranformNode(AdditionNode(DotNode(x[1], ParameterNode()), DotNode(InputNode(), ParameterNode())))
+print(LogisticTranformNode((InputNode(x1) @ theta_input) + (h0 @ theta_prev), name=NodeName('h', t=1 , l=1).__repr__())
+>>> h[1,1]
+```
 
 # Making your own nodes
 
