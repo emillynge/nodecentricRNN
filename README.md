@@ -57,6 +57,50 @@ y_hat_vector.forward_prop
 new_estimate = y_hat_vector.output
 ```
 
+## Infix Shorthand
+To make coding easier to understand some infix operators are baked in at object creation:
+* @: `node1 @ node2 -> DotNode(node1, node2)`
+* +: `node1 + node2 -> Addition(node1, node2)` __if node1 is a concatenation node ->__ `ConcatenateNode(node1.input_nodes, node2)`
+* +=: `node1 += node2 -> node1.append(node2)` __if node1 is a concatenation node the effect is the same__
+
+Using these we can refactor the simple network
+
+```
+x1 = someinputmatrixattime1
+x2 = someinputmatrixattime2
+
+y = GroundTruthNode(outputattime1and2)
+y_hat = ConcatenateNode()
+
+h0 = InputNodes(zeros)
+theta_input = ParameterNode(weights_input, gradientmatrix_input)
+theta_prev = ParameterNode(weights_prev, gradientmatrix_prev)
+theta_out = ParameterNode(weights_out, gradientmatrix_out)
+
+h1 = LogisticTranformNode((InputNode(x1) @ theta_input) + (h0 @ theta_prev))
+y_hat += LogisticTranformNode(h1 @ theta_out)
+
+h1 = LogisticTranformNode((InputNode(x2) @ theta_input) + (h1 @ theta_prev))
+y_hat += LogisticTranformNode(h2 @ theta_out)
+
+cost = EntropyCostNode(y, y_hat)
+```
+
+
+# Making your own nodes
+
+To make a new node you should inherit from one of the node ABC's
+* ParentNode: for nodes that has one or more inputnodes
+* Topnode: for nodes that does not have any parent itself. mostly for new cost nodes
+* Node: the most basic one. use only if above ABC's are not applicable 
+
+Additionally there is a mutable input mixin that makes it possible to add or remove input nodes after object creation.
+This mixin is used for example in AdditionNode and ConcatenateNode
+
+# Recipes
+
+recipes are ways of putting together nodes to form fully fledged netowrks and can be found in the `recipe` module. At the time of writing only a very simple SRNN recipe is there and no ABC for creating new a new recipe has been made.
+
 
 
 
